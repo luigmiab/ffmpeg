@@ -1,4 +1,7 @@
 #!/bin/bash
+RETRY_DELAY=3
+MAX_DELAY=60
+
 while true; do
   ffmpeg -re \
     -i https://hls.4manager.app/live/pc1/index.m3u8 \
@@ -19,6 +22,10 @@ while true; do
     -hls_list_size 6 \
     -hls_flags delete_segments \
     /output/mosaic/index.m3u8
-  echo "FFmpeg exited, restarting in 3s..."
-  sleep 3
+  echo "FFmpeg exited, restarting in ${RETRY_DELAY}s..."
+  sleep "${RETRY_DELAY}"
+  RETRY_DELAY=$(( RETRY_DELAY * 2 ))
+  if [ "${RETRY_DELAY}" -gt "${MAX_DELAY}" ]; then
+    RETRY_DELAY="${MAX_DELAY}"
+  fi
 done

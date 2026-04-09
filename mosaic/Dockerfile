@@ -2,7 +2,10 @@ FROM jrottenberg/ffmpeg:8.0-alpine320
 
 RUN apk add --no-cache nginx bash
 
-RUN mkdir -p /output/mosaic && mkdir -p /var/lib/nginx/tmp && mkdir -p /run/nginx
+RUN mkdir -p /output/mosaic && \
+    mkdir -p /var/lib/nginx/tmp && \
+    mkdir -p /run/nginx && \
+    chmod -R 755 /output
 
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY mosaic.sh /mosaic.sh
