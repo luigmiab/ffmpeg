@@ -59,7 +59,7 @@ build_and_run() {
     echo "1 stream — fullscreen"
     ffmpeg -re \
       -i "${streams[0]}" \
-      -vf "scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},fps=${OUTPUT_FPS}" \
+      -vf "scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}" \
       -c:v libx264 -preset "${PRESET}" -r "${OUTPUT_FPS}" -g $(( OUTPUT_FPS * 2 )) \
       -f hls \
       -hls_time "${HLS_TIME}" \
@@ -75,8 +75,8 @@ build_and_run() {
       -i "${streams[0]}" \
       -i "${streams[1]}" \
       -filter_complex "
-        [0:v]scale=${TILE_W}:${OUTPUT_HEIGHT},fps=${OUTPUT_FPS}[v0];
-        [1:v]scale=${TILE_W}:${OUTPUT_HEIGHT},fps=${OUTPUT_FPS}[v1];
+        [0:v]scale=${TILE_W}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}[v0];
+        [1:v]scale=${TILE_W}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}[v1];
         [v0][v1]hstack=inputs=2[out]
       " \
       -map "[out]" \
@@ -97,9 +97,9 @@ build_and_run() {
       -i "${streams[1]}" \
       -i "${streams[2]}" \
       -filter_complex "
-        [0:v]scale=${TILE_W}:${TILE_H},fps=${OUTPUT_FPS}[v0];
-        [1:v]scale=${TILE_W}:${TILE_H},fps=${OUTPUT_FPS}[v1];
-        [2:v]scale=${TILE_W}:${TILE_H},fps=${OUTPUT_FPS}[v2];
+        [0:v]scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}[v0];
+        [1:v]scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}[v1];
+        [2:v]scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}[v2];
         color=black:size=${TILE_W}x${TILE_H}:rate=${OUTPUT_FPS}[v3];
         [v0][v1][v2][v3]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[out]
       " \
@@ -122,10 +122,10 @@ build_and_run() {
       -i "${streams[2]}" \
       -i "${streams[3]}" \
       -filter_complex "
-        [0:v]scale=${TILE_W}:${TILE_H},fps=${OUTPUT_FPS}[v0];
-        [1:v]scale=${TILE_W}:${TILE_H},fps=${OUTPUT_FPS}[v1];
-        [2:v]scale=${TILE_W}:${TILE_H},fps=${OUTPUT_FPS}[v2];
-        [3:v]scale=${TILE_W}:${TILE_H},fps=${OUTPUT_FPS}[v3];
+        [0:v]scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}[v0];
+        [1:v]scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}[v1];
+        [2:v]scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}[v2];
+        [3:v]scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}[v3];
         [v0][v1][v2][v3]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[out]
       " \
       -map "[out]" \
