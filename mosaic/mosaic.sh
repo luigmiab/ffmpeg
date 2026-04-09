@@ -11,9 +11,14 @@
 # Stream variables — all optional
 # STREAM_1, STREAM_2, STREAM_3, STREAM_4
 
+# Monitor interval in seconds (default 15)
+MONITOR_INTERVAL=${MONITOR_INTERVAL:-15}
+
 TILE_W=$(( OUTPUT_WIDTH / 2 ))
 TILE_H=$(( OUTPUT_HEIGHT / 2 ))
-CHECK_INTERVAL=5
+
+FFMPEG_PID=""
+CURRENT_STREAM_KEY=""
 
 check_stream() {
   local url="$1"
@@ -22,27 +27,30 @@ check_stream() {
     -of default=noprint_wrappers=1:nokey=1 2>/dev/null | grep -q video
 }
 
-build_and_run() {
-  local streams=()
+get_active_streams() {
   for var in STREAM_1 STREAM_2 STREAM_3 STREAM_4; do
     local url="${!var}"
-    if [ -n "${url}" ]; then
-      echo "Checking ${var}..."
-      if check_stream "${url}"; then
-        echo "${var} is online"
-        streams+=("${url}")
-      else
-        echo "${var} is offline or unreachable"
-      fi
+    if [ -n "${url}" ] && check_stream "${url}"; then
+      echo "${url}"
     fi
   done
+}
 
+get_stream_key() {
+  # Returns a string that uniquely identifies the current set of active streams
+  # Used to detect changes
+  local streams=("$@")
+  echo "${streams[*]}"
+}
+
+run_ffmpeg() {
+  local streams=("$@")
   local count=${#streams[@]}
-  echo "Active streams: ${count}"
+
+  echo "Starting FFmpeg with ${count} stream(s)..."
 
   if [ "${count}" -eq 0 ]; then
-    echo "No streams available, showing black screen..."
-    ffmpeg -re \
+    ffmpeg -hide_banner -re \
       -f lavfi -i "color=black:size=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:rate=${OUTPUT_FPS}" \
       -vf "drawtext=text='Nessun segnale':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2" \
       -c:v libx264 -preset "${PRESET}" -r "${OUTPUT_FPS}" -g $(( OUTPUT_FPS * 2 )) \
@@ -50,14 +58,14 @@ build_and_run() {
       -hls_time "${HLS_TIME}" \
       -hls_list_size "${HLS_LIST_SIZE}" \
       -hls_flags delete_segments \
-      -t "${CHECK_INTERVAL}" \
-      /output/mosaic/index.m3u8
+      -t "${MONITOR_INTERVAL}" \
+      /output/mosaic/index.m3u8 &
+    FFMPEG_PID=$!
     return
   fi
 
   if [ "${count}" -eq 1 ]; then
-    echo "1 stream — fullscreen"
-    ffmpeg -re \
+    ffmpeg -hide_banner -re \
       -i "${streams[0]}" \
       -vf "scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black,fps=${OUTPUT_FPS}" \
       -c:v libx264 -preset "${PRESET}" -r "${OUTPUT_FPS}" -g $(( OUTPUT_FPS * 2 )) \
@@ -65,13 +73,13 @@ build_and_run() {
       -hls_time "${HLS_TIME}" \
       -hls_list_size "${HLS_LIST_SIZE}" \
       -hls_flags delete_segments \
-      /output/mosaic/index.m3u8
+      /output/mosaic/index.m3u8 &
+    FFMPEG_PID=$!
     return
   fi
 
   if [ "${count}" -eq 2 ]; then
-    echo "2 streams — side by side"
-    ffmpeg -re \
+    ffmpeg -hide_banner -re \
       -i "${streams[0]}" \
       -i "${streams[1]}" \
       -filter_complex "
@@ -86,13 +94,13 @@ build_and_run() {
       -hls_time "${HLS_TIME}" \
       -hls_list_size "${HLS_LIST_SIZE}" \
       -hls_flags delete_segments \
-      /output/mosaic/index.m3u8
+      /output/mosaic/index.m3u8 &
+    FFMPEG_PID=$!
     return
   fi
 
   if [ "${count}" -eq 3 ]; then
-    echo "3 streams — 2x2 with black bottom-right"
-    ffmpeg -re \
+    ffmpeg -hide_banner -re \
       -i "${streams[0]}" \
       -i "${streams[1]}" \
       -i "${streams[2]}" \
@@ -110,13 +118,13 @@ build_and_run() {
       -hls_time "${HLS_TIME}" \
       -hls_list_size "${HLS_LIST_SIZE}" \
       -hls_flags delete_segments \
-      /output/mosaic/index.m3u8
+      /output/mosaic/index.m3u8 &
+    FFMPEG_PID=$!
     return
   fi
 
   if [ "${count}" -ge 4 ]; then
-    echo "4 streams — full 2x2 mosaic"
-    ffmpeg -re \
+    ffmpeg -hide_banner -re \
       -i "${streams[0]}" \
       -i "${streams[1]}" \
       -i "${streams[2]}" \
@@ -135,15 +143,47 @@ build_and_run() {
       -hls_time "${HLS_TIME}" \
       -hls_list_size "${HLS_LIST_SIZE}" \
       -hls_flags delete_segments \
-      /output/mosaic/index.m3u8
+      /output/mosaic/index.m3u8 &
+    FFMPEG_PID=$!
     return
   fi
 }
 
+monitor_loop() {
+  while true; do
+    sleep "${MONITOR_INTERVAL}"
+    local new_streams
+    mapfile -t new_streams < <(get_active_streams)
+    local new_key
+    new_key=$(get_stream_key "${new_streams[@]}")
+
+    if [ "${new_key}" != "${CURRENT_STREAM_KEY}" ]; then
+      echo "Stream change detected: [${CURRENT_STREAM_KEY}] -> [${new_key}]"
+      if [ -n "${FFMPEG_PID}" ] && kill -0 "${FFMPEG_PID}" 2>/dev/null; then
+        echo "Killing FFmpeg PID ${FFMPEG_PID}..."
+        kill "${FFMPEG_PID}"
+      fi
+    fi
+  done
+}
+
 mkdir -p /output/mosaic
 
+# Start monitor loop in background
+monitor_loop &
+MONITOR_PID=$!
+
+# Trap to kill monitor on exit
+trap 'kill ${MONITOR_PID} 2>/dev/null' EXIT
+
+# Main loop
 while true; do
-  build_and_run
-  echo "Cycle ended, restarting in ${CHECK_INTERVAL}s..."
-  sleep "${CHECK_INTERVAL}"
+  mapfile -t ACTIVE_STREAMS < <(get_active_streams)
+  CURRENT_STREAM_KEY=$(get_stream_key "${ACTIVE_STREAMS[@]}")
+
+  run_ffmpeg "${ACTIVE_STREAMS[@]}"
+
+  # Wait for FFmpeg to finish (crash, SIGTERM from monitor, or natural end)
+  wait "${FFMPEG_PID}"
+  echo "FFmpeg exited, restarting..."
 done
